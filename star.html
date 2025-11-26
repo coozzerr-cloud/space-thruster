@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Space Thruster Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    header {
+      width: 800px;
+      max-width: 95vw;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      font-size: 14px;
+    }
+    #canvasWrap {
+      width: 800px;
+      height: 500px;
+      max-width: 95vw;
+      max-height: 70vh;
+      border: 2px solid #222;
+      box-shadow: 0 0 12px rgba(0,0,0,0.6);
+      position: relative;
+      background: radial-gradient(ellipse at center, #02040a 0%, #000 60%);
+    }
+    #hud {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .label { color: #bbb; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>Space Thruster Game 🚀</div>
+    <div id="hud">
+      <div class="label">Move: Arrow keys or WASD</div>
+      <div class="label">Thrusters: show when thrusting</div>
+    </div>
+  </header>
+
+  <div id="canvasWrap">
+    <canvas id="game" width="800" height="500"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Starfield
+    const STAR_COUNT = 180;
+    const stars = [];
+    function initStars() {
+      for (let i = 0; i < STAR_COUNT; i++) {
+        stars.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          r: Math.random() * 1.7 + 0.3,
+          tw: Math.random() * 0.8 + 0.2
+        });
+      }
+    }
+
+    // Ship
+    const ship = {
+      x: W / 2,
+      y: H / 2,
+      vx: 0,
+      vy: 0,
+      size: 16,        // half-size of hull
+      accel: 0.28,     // thrust acceleration
+      maxSpeed: 4.2,   // clamp speed
+      drag: 0.985,     // inertial drag
+      thrust: { left:false, right:false, up:false, down:false }
+    };
+
+    const keys = new Set();
+
+    // Input
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (['arrowleft','a'].includes(k)) { keys.add('left'); ship.thrust.left = true; }
+      if (['arrowright','d'].includes(k)) { keys.add('right'); ship.thrust.right = true; }
+      if (['arrowup','w'].includes(k)) { keys.add('up'); ship.thrust.up = true; }
+      if (['arrowdown','s'].includes(k)) { keys.add('down'); ship.thrust.down = true; }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      if (['arrowleft','a'].includes(k)) { keys.delete('left'); ship.thrust.left = false; }
+      if (['arrowright','d'].includes(k)) { keys.delete('right'); ship.thrust.right = false; }
+      if (['arrowup','w'].includes(k)) { keys.delete('up'); ship.thrust.up = false; }
+      if (['arrowdown','s'].includes(k)) { keys.delete('down'); ship.thrust.down = false; }
+    });
+
+    // Physics update
+    function update() {
+      // Apply thrust
+      if (keys.has('left')) ship.vx -= ship.accel;
+      if (keys.has('right')) ship.vx += ship.accel;
+      if (keys.has('up')) ship.vy -= ship.accel;
+      if (keys.has('down')) ship.vy += ship.accel;
+
+      // Drag
+      ship.vx *= ship.drag;
+      ship.vy *= ship.drag;
+
+      // Clamp speed
+      const speed = Math.hypot(ship.vx, ship.vy);
+      const max = ship.maxSpeed;
+      if (speed > max) {
+        const s = max / speed;
+        ship.vx *= s;
+        ship.vy *= s;
+      }
+
+      // Move
+      ship.x += ship.vx;
+      ship.y += ship.vy;
+
+      // Screen wrap (or clamp). Choose wrap for fun.
+      if (ship.x < -ship.size) ship.x = W + ship.size;
+      if (ship.x > W + ship.size) ship.x = -ship.size;
+      if (ship.y < -ship.size) ship.y = H + ship.size;
+      if (ship.y > H + ship.size) ship.y = -ship.size;
+    }
+
+    // Draw stars with gentle twinkle and parallax
+    let starTick = 0;
+    function drawStars() {
+      starTick += 0.02;
+      for (const s of stars) {
+        const tw = 0.4 + Math.sin(starTick * s.tw) * 0.3;
+        ctx.fillStyle = `rgba(255,255,255,${0.5 + tw})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Draw ship: a small triangular hull plus side/top/bottom thrusters
+    function drawShip() {
+      const s = ship.size;
+
+      // Hull base direction (pointing up)
+      ctx.save();
+      ctx.translate(ship.x, ship.y);
+
+      // Hull
+      ctx.fillStyle = '#6ec1ff';
+      ctx.strokeStyle = '#2462a8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -s);        // nose
+      ctx.lineTo(s * 0.8, s);   // right tail
+      ctx.lineTo(-s * 0.8, s);  // left tail
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Cockpit dome
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.4, s * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Thrusters
+      drawThrusters(s);
+
+      ctx.restore();
+    }
+
+    function flameGradient(length) {
+      const grad = ctx.createLinearGradient(0, 0, 0, length);
+      grad.addColorStop(0, 'rgba(255,240,180,0.95)');
+      grad.addColorStop(0.5, 'rgba(255,140,0,0.75)');
+      grad.addColorStop(1, 'rgba(255,0,0,0.2)');
+      return grad;
+    }
+
+    function drawThrusters(s) {
+      const flameShort = s * 0.8;
+      const flameLong = s * 1.4;
+
+      // Main rear thruster (when moving up/forward)
+      if (ship.thrust.up) {
+        ctx.fillStyle = flameGradient(flameLong);
+        ctx.beginPath();
+        ctx.moveTo(-6, s);           // left rear
+        ctx.lineTo(0, s + flameLong);
+        ctx.lineTo(6, s);            // right rear
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // idle flicker
+        ctx.fillStyle = flameGradient(flameShort * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(-5, s);
+        ctx.lineTo(0, s + flameShort * (0.25 + Math.random() * 0.15));
+        ctx.lineTo(5, s);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Nose micro thruster (reverse / down)
+      if (ship.thrust.down) {
+        ctx.fillStyle = flameGradient(flameShort);
+        ctx.beginPath();
+        ctx.moveTo(-4, -s);
+        ctx.lineTo(0, -s - flameShort);
+        ctx.lineTo(4, -s);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Left side thruster (move right)
+      if (ship.thrust.right) {
+        ctx.fillStyle = flameGradient(flameShort);
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.8, s * 0.2);
+        ctx.lineTo(-s * 0.8 - flameShort, s * 0.2);
+        ctx.lineTo(-s * 0.8, -s * 0.2);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Right side thruster (move left)
+      if (ship.thrust.left) {
+        ctx.fillStyle = flameGradient(flameShort);
+        ctx.beginPath();
+        ctx.moveTo(s * 0.8, s * 0.2);
+        ctx.lineTo(s * 0.8 + flameShort, s * 0.2);
+        ctx.lineTo(s * 0.8, -s * 0.2);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Main draw
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      drawStars();
+      drawShip();
+    }
+
+    // Game loop
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // Init
+    initStars();
+    loop();
+  </script>
+</body>
+</html>
